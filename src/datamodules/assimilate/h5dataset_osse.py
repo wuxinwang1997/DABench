@@ -88,9 +88,9 @@ class H5Dataset(Dataset):
         self.h5obsmask = [self._open_file(idx, self.obsmask_list) for idx in range(self.n_shard)]
         self.h5era5 = [self._open_file(idx, self.era5_list) for idx in range(self.n_shard)]
         self.in_chans = len(self.variables)
-        self.shape_x = self.h5era5[0][self.variables[0]].shape[2] #just get rid of one of the pixels
-        self.shape_y = self.h5era5[0][self.variables[0]].shape[3]
-        self.n_samples_per_shards = [self.h5era5[i][self.variables[0]].shape[0] for i in range(self.n_shard)]
+        self.shape_x = self.h5xb[0][self.variables[0]].shape[2] #just get rid of one of the pixels
+        self.shape_y = self.h5xb[0][self.variables[0]].shape[3]
+        self.n_samples_per_shards = [self.h5xb[i][self.variables[0]].shape[0] for i in range(self.n_shard)]
         logging.info("Number of examples per shard: {}".format(self.n_samples_per_shards))
         self.n_samples_total = sum(self.n_samples_per_shards)
         logging.info("Number of examples: {}. Fields Shape: {} x {} x {}".format(self.n_samples_total, self.in_chans, self.shape_x, self.shape_y))
@@ -129,7 +129,7 @@ class H5Dataset(Dataset):
         xb = torch.from_numpy(np.concatenate([self.h5xb[shard_idx][k][local_idx].astype(np.float32) for k in self.variables], axis=0))
         obs = torch.from_numpy(np.nan_to_num(np.concatenate([self.h5obs[shard_idx][k][local_idx:local_idx+self.daw].astype(np.float32) for k in self.variables], axis=1)))
         obsmask = torch.from_numpy(np.nan_to_num(np.concatenate([mask_dict[k] for k in self.variables], axis=1).astype(np.float32)))
-        era5 = torch.from_numpy(np.nan_to_num(np.concatenate([self.h5era5[shard_idx][k][local_idx].astype(np.float32) for k in self.variables], axis=0)))
+        era5 = torch.from_numpy(np.nan_to_num(np.concatenate([self.h5era5[shard_idx][k][3 * local_idx].astype(np.float32) for k in self.variables], axis=0)))
         
         # logging.info("xb error", torch.sqrt(torch.mean((xb - era5)**2, dim=(-2,-1))))
 
