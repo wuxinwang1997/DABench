@@ -1,0 +1,14 @@
+defaults:
+  - default
+
+accelerator: 
+  _target_: lightning_npu.accelerators.npu.NPUAccelerator
+
+strategy: 
+  _target_: lightning_npu.strategies.npu.SingleNPUStrategy
+
+plugins:
+  _target_: lightning_npu.plugins.npu.NpuMixedPrecisionPlugin
+  amp_level: O2
+
+devices: 1

@@ -1,0 +1,18 @@
+_target_: pytorch_lightning.Trainer
+
+default_root_dir: ${paths.output_dir}
+
+min_epochs: 1 # prevents early stopping
+max_epochs: 120
+
+accelerator: cpu
+devices: 1
+
+# mixed precision for extra speed-up
+precision: 16
+accumulate_grad_batches: 1
+limit_train_batches : 1
+
+# set True to to ensure deterministic results
+# makes training slower but gives more reproducibility than just setting seeds
+deterministic: False

@@ -1,0 +1,77 @@
+_target_: src.models.forecast.forecast_module.ForecastLitModule
+
+optimizer:
+  _target_: torch.optim.AdamW
+  _partial_: true
+  lr: 3e-7
+  betas: [0.9, 0.95]
+  weight_decay: 1e-5
+
+scheduler: null
+
+after_scheduler: null
+
+net:
+  _target_: src.models.forecast.sformer.arch.Sformer
+  default_vars: [
+    "land_sea_mask", "orography", "latitude", "longitude",
+    "2m_temperature", "10m_u_component_of_wind", "10m_v_component_of_wind", "mean_sea_level_pressure",
+    "geopotential_50", "geopotential_200", "geopotential_250",
+    "geopotential_300", "geopotential_500", "geopotential_700",
+    "geopotential_850", "geopotential_925", "geopotential_1000",
+    "u_component_of_wind_50", "u_component_of_wind_200", "u_component_of_wind_250",
+    "u_component_of_wind_300", "u_component_of_wind_500", "u_component_of_wind_700",
+    "u_component_of_wind_850", "u_component_of_wind_925", "u_component_of_wind_1000",
+    "v_component_of_wind_50", "v_component_of_wind_200", "v_component_of_wind_250",
+    "v_component_of_wind_300", "v_component_of_wind_500", "v_component_of_wind_700",
+    "v_component_of_wind_850", "v_component_of_wind_925", "v_component_of_wind_1000",
+    "temperature_50", "temperature_200", "temperature_250",
+    "temperature_300", "temperature_500", "temperature_700",
+    "temperature_850", "temperature_925", "temperature_1000",
+    "specific_humidity_50", "specific_humidity_200", "specific_humidity_250",
+    "specific_humidity_300", "specific_humidity_500", "specific_humidity_700",
+    "specific_humidity_850", "specific_humidity_925", "specific_humidity_1000",
+  ]
+  img_size: [128, 256]
+  window_size: 8
+  patch_size: 4
+  surface_vars: 8
+  pressure_level: 9
+  embed_dim: 128
+  num_heads: 16
+  depths: [3, 6, 6, 3]
+  mlp_ratio: 4.0
+  drop_path: 0.2
+  drop_rate: 0.2
+  attn_drop: 0.
+  const_dir: ${paths.scale_dir}
+
+mean_path: ${paths.scale_dir}/normalize_mean.npz
+std_path: ${paths.scale_dir}/normalize_std.npz
+clim_paths:
+  - ${paths.scale_dir}/train/climatology.npz
+  - ${paths.scale_dir}/val/climatology.npz
+  - ${paths.scale_dir}/test/climatology.npz
+ckpt_path: ${paths.ckpt_dir}/sformer_pretrain.ckpt
+dict_vars: [
+  "2m_temperature", "10m_u_component_of_wind", "10m_v_component_of_wind", "mean_sea_level_pressure",
+  "geopotential_50", "geopotential_200", "geopotential_250",
+  "geopotential_300", "geopotential_500", "geopotential_700",
+  "geopotential_850", "geopotential_925", "geopotential_1000",
+  "u_component_of_wind_50", "u_component_of_wind_200", "u_component_of_wind_250",
+  "u_component_of_wind_300", "u_component_of_wind_500", "u_component_of_wind_700",
+  "u_component_of_wind_850", "u_component_of_wind_925", "u_component_of_wind_1000",
+  "v_component_of_wind_50", "v_component_of_wind_200", "v_component_of_wind_250",
+  "v_component_of_wind_300", "v_component_of_wind_500", "v_component_of_wind_700",
+  "v_component_of_wind_850", "v_component_of_wind_925", "v_component_of_wind_1000",
+  "temperature_50", "temperature_200", "temperature_250",
+  "temperature_300", "temperature_500", "temperature_700",
+  "temperature_850", "temperature_925", "temperature_1000",
+  "specific_humidity_50", "specific_humidity_200", "specific_humidity_250",
+  "specific_humidity_300", "specific_humidity_500", "specific_humidity_700",
+  "specific_humidity_850", "specific_humidity_925", "specific_humidity_1000",
+]
+pressure_weight: false
+loss:
+  _target_: src.utils.train_utils.WeightedL1Loss
+  sum: false

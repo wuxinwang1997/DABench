@@ -1,0 +1,48 @@
+_target_: src.datamodules.assimilate.h5datamodule_osse.AssimilateDataModule
+root_dir: ${paths.data_dir}
+start_idx: 0
+end_idx: 1
+variables: [
+  "2m_temperature", "10m_u_component_of_wind", "10m_v_component_of_wind", "mean_sea_level_pressure",
+  "geopotential_50", "geopotential_200", "geopotential_250",
+  "geopotential_300", "geopotential_500", "geopotential_700",
+  "geopotential_850", "geopotential_925", "geopotential_1000",
+  "u_component_of_wind_50", "u_component_of_wind_200", "u_component_of_wind_250",
+  "u_component_of_wind_300", "u_component_of_wind_500", "u_component_of_wind_700",
+  "u_component_of_wind_850", "u_component_of_wind_925", "u_component_of_wind_1000",
+  "v_component_of_wind_50", "v_component_of_wind_200", "v_component_of_wind_250",
+  "v_component_of_wind_300", "v_component_of_wind_500", "v_component_of_wind_700",
+  "v_component_of_wind_850", "v_component_of_wind_925", "v_component_of_wind_1000",
+  "temperature_50", "temperature_200", "temperature_250",
+  "temperature_300", "temperature_500", "temperature_700",
+  "temperature_850", "temperature_925", "temperature_1000",
+  "specific_humidity_50", "specific_humidity_200", "specific_humidity_250",
+  "specific_humidity_300", "specific_humidity_500", "specific_humidity_700",
+  "specific_humidity_850", "specific_humidity_925", "specific_humidity_1000",
+]
+out_variables: [
+  "2m_temperature", "10m_u_component_of_wind", "10m_v_component_of_wind", "mean_sea_level_pressure",
+  "geopotential_50", "geopotential_200", "geopotential_250",
+  "geopotential_300", "geopotential_500", "geopotential_700",
+  "geopotential_850", "geopotential_925", "geopotential_1000",
+  "u_component_of_wind_50", "u_component_of_wind_200", "u_component_of_wind_250",
+  "u_component_of_wind_300", "u_component_of_wind_500", "u_component_of_wind_700",
+  "u_component_of_wind_850", "u_component_of_wind_925", "u_component_of_wind_1000",
+  "v_component_of_wind_50", "v_component_of_wind_200", "v_component_of_wind_250",
+  "v_component_of_wind_300", "v_component_of_wind_500", "v_component_of_wind_700",
+  "v_component_of_wind_850", "v_component_of_wind_925", "v_component_of_wind_1000",
+  "temperature_50", "temperature_200", "temperature_250",
+  "temperature_300", "temperature_500", "temperature_700",
+  "temperature_850", "temperature_925", "temperature_1000",
+  "specific_humidity_50", "specific_humidity_200", "specific_humidity_250",
+  "specific_humidity_300", "specific_humidity_500", "specific_humidity_700",
+  "specific_humidity_850", "specific_humidity_925", "specific_humidity_1000",
+]
+daw: 4
+lead_time: 24
+partial: 0.1
+seed: 1024
+batch_size: 32
+num_workers: 4
+pin_memory: true
+prefetch_factor: 2
