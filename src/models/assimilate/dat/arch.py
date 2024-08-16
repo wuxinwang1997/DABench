@@ -410,22 +410,6 @@ class SwinLayer(nn.Module):
         return h
 
 class DaT(nn.Module):
-    """Implements the FuXi model as described in the paper,
-    https://arxiv.org/abs/2301.10343
-
-    Args:
-        default_vars (list): list of default variables to be used for training
-        img_size (list): image size of the input data
-        patch_size (int): patch size of the input data
-        embed_dim (int): embedding dimension
-        depth (int): number of transformer layers
-        num_blocks (int): number of fno blocks
-        mlp_ratio (float): ratio of mlp hidden dimension to embedding dimension
-        drop_path (float): stochastic depth rate
-        drop_rate (float): dropout rate
-        double_skip (bool): whether to use residual twice
-    """
-
     def __init__(
         self,
         default_vars,
@@ -603,25 +587,6 @@ class Model_WeightedL2Norm(torch.nn.Module):
         loss = torch.nansum(loss * w, dim=-1)  # (B)
 
         return loss
-
-# New module for the definition/computation of the variational cost
-# class Model_Var_Cost(nn.Module):
-#     def __init__(self ,m_NormObs, m_NormPhi, dim_obs_channel=0):
-#         super(Model_Var_Cost, self).__init__()
-#         self.dim_obs_channel = dim_obs_channel
-#         # parameters for variational cost
-#         self.alphaObs    = torch.nn.Parameter(torch.Tensor([1.]))
-#         self.alphaReg    = torch.nn.Parameter(torch.Tensor([1.]))
-#         self.WReg    = torch.nn.Parameter(torch.Tensor(np.ones(self.dim_obs_channel,)))
-
-#         self.normObs   = m_NormObs
-#         self.normPrior = m_NormPhi
-
-#     def forward(self, dx, dy, std):
-#         loss_xb = (self.alphaReg**2) * self.normPrior(dx,self.WReg**2)
-#         loss_obs = (self.alphaObs**2) * self.normObs(dy,std)
-
-#         return loss_xb + loss_obs
 
 class Model_Var_Cost(nn.Module):
     def __init__(self, m_NormObs):
