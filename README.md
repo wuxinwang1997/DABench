@@ -30,16 +30,20 @@ The first set of results reported the RMSEs and ACCs at 4 different variables: z
 
 ### 15-day medium-range forecast
 The first set of results reported the RMSEs and ACCs at 4 different variables: z500, t850, q700, u850.
+-->
 
 ## Citation
 
 If you find our work useful in your research, please consider citing: -->
 
-<!-- ```
-    @article{wang2022dabench,
-      title={DABench: A Benchmark Dataset for Data-Driven Weather Prediction},
-      author={Wuxin Wang and Yonghui Zhu and Yi-Hsuan Yang and Xin Wang and Xin Zhou and Yuefeng Wang},
-      journal={arXiv preprint arXiv:2209.05404},
-      year={2022}
-    }
-``` -->
+```
+@misc{wang2024dabenchbenchmarkdatasetdatadriven,
+  title={DABench: A Benchmark Dataset for Data-Driven Weather Data Assimilation}, 
+  author={Wuxin Wang and Weicheng Ni and Tao Han and Lei Bai and Boheng Duan and Kaijun Ren},
+  year={2024},
+  eprint={2408.11438},
+  archivePrefix={arXiv},
+  primaryClass={cs.LG},
+  url={https://arxiv.org/abs/2408.11438}, 
+}
+```
