@@ -2,6 +2,8 @@
 
 The code repository for the manuscript [A Benchmark Dataset for AI-based Weather Data Assimilation](https://arxiv.org/abs/2408.11438)
 
+![alt text](Figure01.jpg)
+
 ## Abstract
 
 Recent advancements in Artificial Intelligence (AI) have led to the development of several Large Weather Models (LWMs) that rival State-Of-The-Art (SOTA) Numerical Weather Prediction (NWP) systems. Until now, these models have still relied on traditional NWP-generated analysis fields as input and are far from autonomous. Currently, scientists are increasingly focusing on developing data-driven data assimilation (DA) models for LWMs. To expedite advancements in this field and facilitate the operationalization of data-driven end-to-end weather forecasting systems, we propose DABench, a benchmark constructed by simulated observations, real-world observations, and ERA5 reanalysis. DABench contributes four standard features: (1) sparse and noisy observations provided for both simulated and real-world experiments; (2) a Skillful pre-trained Transformer-based weather prediction model, Sformer, designed to generate background fields while rigorously assessing the impact of assimilation outcomes on predictions; (3) standardized evaluation metrics for the model comparison; (4) a strong DA baseline, 4DVarFormerV2. Our experimental results demonstrate that the end-to-end weather forecasting system, integrating 4DVarFormerV2 and Sformer, can assimilate real-world observations, thereby facilitating a stable DA cycle lasting one year and achieving a skillful forecasting lead time of up to 7 days. The proposed DABench will significantly advance research in AI-based DA, AI-based weather forecasting, and related domains.
