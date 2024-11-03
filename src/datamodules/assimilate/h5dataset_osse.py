@@ -45,6 +45,7 @@ class H5Dataset(Dataset):
                 obs_list,
                 obsmask_list,
                 era5_list,
+                full_obs,
                 start_idx,
                 end_idx,
                 variables,
@@ -73,6 +74,7 @@ class H5Dataset(Dataset):
         self.obs_list = [f for f in obs_list if ("climatology" not in f) and ("times" not in f)]
         self.obsmask_list = [f for f in obsmask_list if ("climatology" not in f) and ("times" not in f)]
         self.era5_list = [f for f in era5_list if ("climatology" not in f) and ("times" not in f)]
+        self.full_obs = full_obs
         self.variables = variables
         self.out_variables = out_variables if out_variables is not None else variables
         self.daw = daw
@@ -120,10 +122,10 @@ class H5Dataset(Dataset):
         mask = self.h5obsmask[shard_idx]["mask"][local_idx:local_idx+self.daw].astype(np.float32)
         mask_dict = {}
         for k in self.variables:
-            if (k not in ["specific_humidity_50", "specific_humidity_200", "specific_humidity_250"]):# or ("geopotential" not in k):
-                mask_dict[k] = mask
+            if self.full_obs:
+                mask_dict[k] = np.ones_like(mask).astype(np.float32)
             else:
-                mask_dict[k] = mask * 0
+                mask_dict[k] = mask
         
         #get the data
         xb = torch.from_numpy(np.concatenate([self.h5xb[shard_idx][k][local_idx].astype(np.float32) for k in self.variables], axis=0))

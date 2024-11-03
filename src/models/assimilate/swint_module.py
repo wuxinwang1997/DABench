@@ -7,7 +7,7 @@ from pytorch_lightning import LightningModule
 from torchmetrics import MinMetric, MeanMetric, MaxMetric
 from src.utils.weighted_acc_rmse import weighted_rmse_torch, weighted_acc_torch, weighted_mae_torch
 
-class DaTLitModule(LightningModule):
+class ViTLitModule(LightningModule):
     """Example of a `LightningModule` for MNIST classification.
 
     A `LightningModule` implements 8 key methods:
@@ -51,7 +51,6 @@ class DaTLitModule(LightningModule):
         clim_paths: list,
         dict_vars: str,
         loss: object,
-        pred_ckpt: str,
     ) -> None:
         """Initialize a `FDVarNetLitModule`.
 
@@ -66,12 +65,6 @@ class DaTLitModule(LightningModule):
         self.save_hyperparameters(logger=False)
 
         self.net = net
-        weights_dict = torch.load(self.hparams.pred_ckpt)['state_dict']
-        load_weights_dict = {k[4:]: v for k, v in weights_dict.items()
-                            if self.net.phi_r.state_dict()[k[4:]].numel() == v.numel()}
-        self.net.phi_r.load_state_dict(load_weights_dict, strict=True)
-        for param in self.net.phi_r.named_parameters():
-            param[1].requires_grad = False
 
         # loss function
         self.criterion = self.hparams.loss
@@ -91,7 +84,7 @@ class DaTLitModule(LightningModule):
         self.clims = []
         for i in range(len(clim_paths)):
             clim_raw = np.load(clim_paths[i])
-            clim_np = np.ones([1, len(self.dict_vars), self.net.phi_r.img_size[0], self.net.phi_r.img_size[1]])
+            clim_np = np.ones([1, len(self.dict_vars), self.net.img_size[0], self.net.img_size[1]])
             for j in range(mult.shape[0]):
                 clim_np[0, j] = ((clim_raw[self.dict_vars[j]] - self.mean[self.dict_vars[j]]) / self.std[self.dict_vars[j]])[0] * clim_np[0, j]
             self.clims.append(torch.tensor(clim_np, dtype=torch.float32, requires_grad=False))
@@ -109,13 +102,13 @@ class DaTLitModule(LightningModule):
         self.val_acc_t850_best = MaxMetric()
         self.val_acc_q500_best = MaxMetric()
 
-    def forward(self, x: torch.Tensor, y: torch.Tensor, mask: torch.Tensor, std: torch.Tensor, vars, out_vars) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, y: torch.Tensor, mask: torch.Tensor, vars, out_vars) -> torch.Tensor:
         """Perform a forward pass through the model `self.net`.
 
         :param x: A tensor of images.
         :return: A tensor of logits.
         """
-        return self.net(x, y, mask, std, vars, out_vars)
+        return self.net(x, y, mask, vars, out_vars)
 
     def on_train_start(self) -> None:
         """Lightning hook that is called when training begins."""
@@ -150,17 +143,10 @@ class DaTLitModule(LightningModule):
         xb = xb.to(xt.device, dtype=xt.dtype)
 
         # need to evaluate grad/backward during the evaluation and training phase for phi_r
-        with torch.set_grad_enabled(True):
-            state = torch.autograd.Variable(xb, requires_grad=True)
-            xa = self.forward(state, obs.detach() * obs_mask, obs_mask, self.mult, vars, out_vars)
-            if (phase == 'val') or (phase == 'test'):
-                xa = xa.detach()
-            # pred = self.net.phi_r(xa, 
-            #                     torch.from_numpy(6 * np.ones((1, 1))).to(xt.device, dtype=torch.float32) / 100,
-            #                     vars,
-            #                     out_vars)
-            loss = self.criterion(xa, xt)
-            # loss += self.criterion(pred, xt[:,2])
+        xa = self.forward(xb, obs.detach() * obs_mask, obs_mask, vars, out_vars)
+        if (phase == 'val') or (phase == 'test'):
+            xa = xa.detach()
+        loss = self.criterion(xa, xt)
         torch.cuda.empty_cache()
         return loss, xa, xt
     def training_step(
@@ -306,8 +292,7 @@ class DaTLitModule(LightningModule):
 
         :return: A dict containing the configured optimizers and learning-rate schedulers to be used for training.
         """
-        optimizer = self.hparams.optimizer([{'params': self.net.model_Grad.parameters()},
-                                            {'params': self.net.model_VarCost.parameters()}])
+        optimizer = self.hparams.optimizer(self.net.parameters())
         if self.hparams.scheduler is not None:
             if self.hparams.after_scheduler is not None:
                 after_scheduler = self.hparams.after_scheduler(optimizer=optimizer)

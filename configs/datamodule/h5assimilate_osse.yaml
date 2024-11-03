@@ -38,6 +38,7 @@ out_variables: [
   "specific_humidity_300", "specific_humidity_500", "specific_humidity_700",
   "specific_humidity_850", "specific_humidity_925", "specific_humidity_1000",
 ]
+full_obs: false
 daw: 4
 lead_time: 24
 partial: 0.1

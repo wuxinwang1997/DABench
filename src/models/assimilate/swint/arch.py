@@ -1,20 +1,16 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Fri May  1 15:38:05 2020
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
 
-@author: rfablet
-"""
-
+from functools import partial, lru_cache
 import numpy as np
 import torch
-from torch import nn
-import torch.nn.functional as F
-from functools import partial, lru_cache
+import torch.nn as nn
 from timm.models.layers import DropPath
 from timm.models.vision_transformer import trunc_normal_
 import collections.abc
 from einops import repeat, rearrange
+import torch.nn.functional as F
+from src.utils.model_utils import load_constant
 
 class PatchEmbed(nn.Module):
     def __init__(self, img_size=None, patch_size=8, in_chans=13, embed_dim=768):
@@ -227,8 +223,6 @@ class WindowAttentionV2(nn.Module):
         x = self.proj_drop(x)
         return x
 
-def modulate(x, shift, scale):
-    return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
 
 class SwinBlock(nn.Module):
     def __init__(
@@ -274,7 +268,7 @@ class SwinBlock(nn.Module):
                                       attn_drop=attn_drop,
                                       proj_drop=drop)
 
-        self.drop_path1 = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)
 
         mlp_hidden_dim = int(dim * mlp_ratio)
@@ -309,19 +303,16 @@ class SwinBlock(nn.Module):
             attn_mask = attn_mask.masked_fill(attn_mask != 0, float(-100.0)).masked_fill(attn_mask == 0, float(0.0))
         else:
             attn_mask = None
-        self.drop_path2 = DropPath(drop_path) if drop_path > 0. else nn.Identity()
-
-        self.adaLN_modulation = nn.Sequential(
-            nn.SiLU(),
-            nn.Linear(dim, 6 * dim, bias=True),
-        )
 
         self.register_buffer("attn_mask", attn_mask)
 
-    def swin_attn(self, x):
+    def forward(self, x):
         H, W = self.input_size
         B, L, C = x.shape
         assert L == H * W, "input feature has wrong size"
+
+        shortcut = x
+        x = self.norm1(x)
 
         x = x.view(B, H, W, C)
         # cyclic shift
@@ -352,14 +343,13 @@ class SwinBlock(nn.Module):
 
         x = x.view(B, H * W, C)
 
+        x = shortcut + self.drop_path(x)
+        x = x + self.drop_path(self.mlp(self.norm2(x)))
+
         return x
 
-    def forward(self, x):
-        x = x + self.drop_path1(self.swin_attn(self.norm1(x)))
-        x = x + self.drop_path2(self.mlp(self.norm2(x)))
-        return x
 
-
+conv_class = PeriodicConv2d
 norm_layer = partial(nn.LayerNorm, eps=1e-6)
 
 
@@ -409,20 +399,37 @@ class SwinLayer(nn.Module):
             h = blk(h)
         return h
 
-class DaT(nn.Module):
+class SwinTransformer(nn.Module):
+    """Implements the FuXi model as described in the paper,
+    https://arxiv.org/abs/2301.10343
+
+    Args:
+        default_vars (list): list of default variables to be used for training
+        img_size (list): image size of the input data
+        patch_size (int): patch size of the input data
+        embed_dim (int): embedding dimension
+        depth (int): number of transformer layers
+        num_blocks (int): number of fno blocks
+        mlp_ratio (float): ratio of mlp hidden dimension to embedding dimension
+        drop_path (float): stochastic depth rate
+        drop_rate (float): dropout rate
+        double_skip (bool): whether to use residual twice
+    """
+
     def __init__(
         self,
         default_vars,
-        img_size=[128, 256],
+        img_size=[64, 128],
         window_size=8,
         patch_size=4,
-        embed_dim=768,
-        num_heads=16,
-        depths=[2, 2, 2, 2],
+        embed_dim=1024,
+        num_heads=8,
+        depths=[6, 6, 6, 6],
         mlp_ratio=4,
-        drop_path=0.2,
-        drop_rate=0.2,
+        drop_path=0.,
+        drop_rate=0.,
         attn_drop=0.,
+        resudial=False,
     ):
         super().__init__()
 
@@ -437,15 +444,17 @@ class DaT(nn.Module):
         self.feat_size = [sz // patch_size for sz in img_size]
         self.embed_dim = embed_dim
         self.num_layers = len(depths)
+        self.resudial = resudial
 
         # variable tokenization: separate embedding layer for each input variable
         self.var_map = self.create_var_map()
-        self.patch_embed = PatchEmbed(img_size, patch_size, int(4 * len(default_vars)), embed_dim)
+        self.patch_embed = PatchEmbed(img_size, patch_size, int(3 * len(default_vars)), embed_dim)
         self.num_patches = self.patch_embed.num_patches
 
         # --------------------------------------------------------------------------
 
-        # MultiModal-Transformer backbone
+        # SwinTransformer backbone
+
         layers = []
         input_size = [sz // patch_size for sz in self.img_size]
 
@@ -465,7 +474,8 @@ class DaT(nn.Module):
             layers.append(layer)
 
         self.layers = nn.ModuleList(layers)
-        
+
+        self.norm = nn.LayerNorm(embed_dim)
         # --------------------------------------------------------------------------
 
         # prediction head
@@ -519,7 +529,6 @@ class DaT(nn.Module):
     def forward_encoder(self, x: torch.Tensor, variables, noise=None):
         # x: `[B, V, H, W]` shape.
         # tokenize each variable separately
-        # (B, 8, H, W)
         h = self.patch_embed(x)
 
         if exists(noise):
@@ -538,7 +547,7 @@ class DaT(nn.Module):
 
         return h
 
-    def forward(self, xb, grad, obs, mask, variables, out_variables, noise=None):
+    def forward(self, xb, obs, mask, variables, out_variables, noise=None):
         """Forward pass through the model.
 
         Args:
@@ -550,159 +559,15 @@ class DaT(nn.Module):
             loss (list): Different metrics.
             preds (torch.Tensor): `[B, Vo, H, W]` shape. Predicted weather/climate variables.
         """
-        out_transformers = self.forward_encoder(torch.concat([xb, grad, obs, mask], dim=1), variables, noise)  # B, L, D
+        out_transformers = self.forward_encoder(torch.concat([xb, obs[:,0], mask[:,0]], dim=1), variables, noise)  # B, L, D
 
         preds = self.head(out_transformers)  # B, L, V*p*p
 
         preds = self.unpatchify(preds)
         out_var_ids = self.get_var_ids(tuple(out_variables), preds.device)
-        preds = preds[:, out_var_ids]
-
-        return preds
-
-class Obs_WeighedL2Norm(torch.nn.Module):
-    def __init__(self, num_vars, obserr):
-        super(Obs_WeighedL2Norm, self).__init__()
-        obserr_ = np.ones((1, num_vars))
-        for i in range(num_vars):
-            obserr_[:, i] = obserr[i] * obserr_[:, i]
-        obserr = obserr_ ** 2
-        R_inv = np.where(obserr == 0, 0, 1 / obserr)
-        self.R_inv = torch.nn.Parameter(torch.Tensor(R_inv), requires_grad=False)
-
-    def forward(self, x, std):
-        var = (torch.unsqueeze(std, dim=0) ** 2).to(x.device, dtype=x.dtype)  # (68)
-        loss = torch.nansum(x**2, dim=(-2, -1))  # (B, 4, 68)
-        loss = torch.nanmean(loss, dim=1)  # (B, 68)
-        loss = loss * self.R_inv * var  # (B, 68)
-        loss = torch.nansum(loss, dim=-1)  # (B)
-        return loss
-
-class Model_WeightedL2Norm(torch.nn.Module):
-    def __init__(self):
-        super(Model_WeightedL2Norm, self).__init__()
-
-    def forward(self, x, w):
-        loss = torch.nansum(x**2, dim=(-2, -1))  # (B, 68)
-        loss = torch.nansum(loss * w, dim=-1)  # (B)
-
-        return loss
-
-class Model_Var_Cost(nn.Module):
-    def __init__(self, m_NormObs):
-        super(Model_Var_Cost, self).__init__()
-        self.normObs   = m_NormObs
-
-    def forward(self, dy, std):
-        loss = self.normObs(dy,std)
-
-        return loss
-
-class Model_H(torch.nn.Module):
-    def __init__(self, shape_data):
-        super(Model_H, self).__init__()
-        self.dim_obs = 1
-        self.dim_obs_channel = np.array(shape_data)
-
-    def forward(self, x, y, mask):
-        dyout = (x - y) * mask
-
-        return dyout
-
-# 4DVarNN Solver class using automatic differentiation for the computation of gradient of the variational cost
-# input modules: operator phi_r, gradient-based update model m_Grad
-# modules for the definition of the norm of the observation and prior terms given as input parameters
-# (default norm (None) refers to the L2 norm)
-# updated inner modles to account for the variational model module
-class Solver_Grad_4DVarNN(nn.Module):
-    def __init__(self ,phi_r,mod_H, m_Grad, num_vars, obserr, lead_time, dt, adaptive):
-        super(Solver_Grad_4DVarNN, self).__init__()
-        self.phi_r = phi_r
-
-        m_NormObs = Obs_WeighedL2Norm(num_vars, obserr)
-        self.model_H = mod_H
-        self.model_Grad = m_Grad
-        self.model_VarCost = Model_Var_Cost(m_NormObs)
-        self.lead_time = lead_time
-        self.dt = dt
-        self.adaptive = adaptive
-        self.preds = []
-
-    def forward(self, x, yobs, mask, std, vars, out_vars):
-        return self.solve(x, yobs, mask, std, vars, out_vars)
-
-    def solve(self, x_0, obs, mask, std, vars, out_vars, normgrad=None):
-        x_k = torch.mul(x_0,1.)
-        x_k_plus_1 = None
-        x_k_plus_1, normgrad = self.solver_step(x_k, obs, mask, std, vars, out_vars, normgrad)
-
-        x_k = torch.mul(x_k_plus_1,1.)
-
-        return x_k_plus_1
-
-    def solver_step(self, x_k, obs, mask, std, vars, out_vars, normgrad=None):
-        _, var_cost_grad, scale = self.var_cost(x_k, obs, mask, std, vars, out_vars)
-        if normgrad is None:
-            normgrad_ = torch.sqrt(torch.mean(var_cost_grad ** 2, dim=(1, 2, 3), keepdim=True))
-            normgrad_ = torch.where(torch.isnan(normgrad_), 1, normgrad_)
-            normgrad_ = torch.where(normgrad_ == 0, 1, normgrad_)
-            normgrad_ = torch.where(torch.isinf(normgrad_), 1, normgrad_)
+        if self.resudial:
+            preds = preds[:, out_var_ids] + xb
         else:
-            normgrad_= normgrad
+            preds = preds[:, out_var_ids]
 
-        grad = self.model_Grad(x_k, var_cost_grad / normgrad_, obs[:,0], mask[:,0], vars, out_vars)
-        grad *= scale
-        x_k_plus_1 = x_k + grad
-
-        return x_k_plus_1, normgrad_
-    
-    def var_cost(self, xk, yobs, mask, std, vars, out_vars):
-        preds = self.forecast(xk, vars, out_vars)
-        preds = torch.stack(self.preds, dim=1)
-        dy = self.model_H(preds, yobs, mask)
-        
-        loss = self.model_VarCost(dy, std)
-        
-        var_cost_grad = torch.autograd.grad(loss, xk, grad_outputs=torch.ones_like(loss), retain_graph=True)[0]
-        var_cost_grad = torch.where(torch.isnan(var_cost_grad), 0, var_cost_grad)
-        var_cost_grad = torch.where(torch.isinf(var_cost_grad), 0, var_cost_grad)
-
-        if self.adaptive:
-            scale = loss / torch.count_nonzero(torch.flatten(mask, start_dim=1), dim=-1)
-            scale = torch.where(torch.isnan(scale), 1, scale)
-            scale = torch.where(torch.isinf(scale), 1, scale)
-            scale = torch.where(scale==0, 1, scale)
-            return loss, var_cost_grad, torch.unsqueeze(torch.unsqueeze(torch.unsqueeze(scale, dim=-1), dim=-1), dim=-1)
-        else:
-            return loss, var_cost_grad, 1
-    
-    def forecast(self, x0, vars, out_vars):
-        self.preds = []
-        self.preds.append(x0)
-        for i in range(1, self.lead_time // self.dt):
-            if ((24 // self.dt) > 0) and (i % (24 // self.dt)) == 0:
-                # Call the model for 24h forecast
-                self.preds.append(self.phi_r(self.preds[i - 24 // self.dt],
-                                             torch.from_numpy(24 * np.ones((1,1))).to(x0.device, dtype=torch.float32) / 100,
-                                             vars,
-                                             out_vars))
-            elif ((12 // self.dt) > 0) and (i % (12 // self.dt)) == 0:
-                # Call the model for 24h forecast
-                self.preds.append(self.phi_r(self.preds[i - 12 // self.dt],
-                                             torch.from_numpy(12 * np.ones((1,1))).to(x0.device, dtype=torch.float32) / 100,
-                                             vars,
-                                             out_vars))
-            elif ((6 // self.dt) > 0) and (i % (6 // self.dt)) == 0:
-                # Call the model for 24h forecast
-                self.preds.append(self.phi_r(self.preds[i - 6 // self.dt],
-                                             torch.from_numpy(6 * np.ones((1,1))).to(x0.device, dtype=torch.float32) / 100,
-                                             vars,
-                                             out_vars))
-            elif ((3 // self.dt) > 0) and (i % (3 // self.dt)) == 0:
-                # Call the model for 24h forecast
-                self.preds.append(self.phi_r(self.preds[i - 3 // self.dt],
-                                             torch.from_numpy(3 * np.ones((1,1))).to(x0.device, dtype=torch.float32) / 100,
-                                             vars,
-                                             out_vars))
-        preds = torch.stack(self.preds, dim=1)
         return preds
